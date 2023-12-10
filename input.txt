@@ -1,0 +1,9 @@
+Load R1, 10(R2)
+StoRe R2, 14(R7)
+BNE R3, R4, 32
+CaLl 10
+RET
+add R3, R2, R5
+AdDi R3, r2, 5
+nand R2, r1, R3
+DIV R1, R3, R2
