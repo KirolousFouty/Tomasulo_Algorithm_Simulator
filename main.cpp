@@ -20,7 +20,7 @@ public:
     int rA;
     int rB;
     int rC;
-    int imm_offset_label;
+    char imm_offset_label;
     int index;
     int issuedCycle;
     int executedCycle;
@@ -56,6 +56,7 @@ void getReservationStationsParameters();
 void printReservationStationsParameters();
 
 vector<instruction> instructions;
+vector<short> reg(8); // 8 General Purpose Registers R0 to R7. 16-bits each. R0 always contains a read-only zero.
 vector<reservationStation> load_ReservationStations;
 vector<reservationStation> store_ReservationStations;
 vector<reservationStation> bne_ReservationStations;
@@ -63,10 +64,19 @@ vector<reservationStation> call_ret_ReservationStations;
 vector<reservationStation> add_addi_ReservationStations;
 vector<reservationStation> nand_ReservationStations;
 vector<reservationStation> div_ReservationStations;
+short mem[65536]; // 16 bit * 65536 entry = 128 KB memory
+
+/* TODO:
+ * note: R0 is a read-only zero
+ * implement PC
+ * implement issueInstruction()
+ * implement executeInstruction()
+ * implement writeInstruction()
+ * investigate reorder buffer
+ */
 
 int main()
 {
-
     getInstructionsFromFile("input.txt");
     for (int i = 0; i < instructions.size(); i++)
         instructions[i].printInstruction();
@@ -78,10 +88,9 @@ int main()
     // input: 2 3 2 3 1 1 1 1 3 2 1 1 1 10
     getReservationStationsParameters();
 
-    cout
-        << endl
-        << endl
-        << endl;
+    cout << endl
+         << endl
+         << endl;
     printReservationStationsParameters();
 
     return 0;
@@ -105,6 +114,7 @@ void getInstructionsFromFile(string filename)
 
     string s, temp;
     instruction i;
+    int temp2;
 
     while (!inputFile.eof())
     {
@@ -122,7 +132,9 @@ void getInstructionsFromFile(string filename)
             inputFile >> s;
             temp = s;
             s.erase(s.find('('), s.length() - s.find('(')); // delete "(R#)"
-            i.imm_offset_label = stoi(s);
+            temp2 = stoi(s);
+            temp2 = temp2 & 63;
+            i.imm_offset_label = (temp2 & 32) ? (temp2 | 193) : temp2; // set to signed 6 bits
             temp.erase(0, temp.find('R') + 1);
             temp.erase(temp.find(')'), temp.length() - temp.find(')')); // delete "#(R" and ")"
             i.rB = stoi(temp);
@@ -140,14 +152,18 @@ void getInstructionsFromFile(string filename)
             s.erase(s.length() - 1, 1);
             i.rB = stoi(s);
             inputFile >> s;
-            i.imm_offset_label = stoi(s);
+            temp2 = stoi(s);
+            temp2 = temp2 & 63;
+            i.imm_offset_label = (temp2 & 32) ? (temp2 | 193) : temp2; // set to signed 6 bits
         }
         else if (s == "CALL")
         {
             i.instCode = 4;
             i.instName = s;
             inputFile >> s;
-            i.imm_offset_label = stoi(s);
+            temp2 = stoi(s);
+            temp2 = temp2 & 63;
+            i.imm_offset_label = (temp2 & 32) ? (temp2 | 193) : temp2; // set to signed 6 bits
         }
         else if (s == "RET")
         {
@@ -190,19 +206,19 @@ void instruction::printInstruction()
     switch (instCode)
     {
     case 1: // LOAD
-        cout << instName << " R" << rA << ", " << imm_offset_label << "(R" << rB << ")";
+        cout << instName << " R" << rA << ", " << (int)imm_offset_label << "(R" << rB << ")";
         break;
 
     case 2: // STORE, same formatting as case LOAD
-        cout << instName << " R" << rA << ", " << imm_offset_label << "(R" << rB << ")";
+        cout << instName << " R" << rA << ", " << (int)imm_offset_label << "(R" << rB << ")";
         break;
 
     case 3: // BNE
-        cout << instName << " R" << rA << ", R" << rB << ", " << imm_offset_label;
+        cout << instName << " R" << rA << ", R" << rB << ", " << (int)imm_offset_label;
         break;
 
     case 4: // CALL
-        cout << instName << " " << imm_offset_label;
+        cout << instName << " " << (int)imm_offset_label;
         break;
 
     case 5: // RET
@@ -214,7 +230,7 @@ void instruction::printInstruction()
         break;
 
     case 7: // ADDI, same formatting as BNE
-        cout << instName << " R" << rA << ", R" << rB << ", " << imm_offset_label;
+        cout << instName << " R" << rA << ", R" << rB << ", " << (int)imm_offset_label;
         break;
 
     case 8: // NAND, same formatting as ADD
