@@ -3,6 +3,8 @@
 #include <cctype>
 #include <vector>
 #include <string>
+#include <map>
+#include <queue>
 using namespace std;
 
 /* Design Parameters:
@@ -12,10 +14,25 @@ using namespace std;
  * Supported 16-bit instructions: LOAD, STORE, BNE, CALL, RET, ADD, ADDI, NAND, DIV
  */
 
+/* Notes and Assumptions:
+ * PC starts at zero
+ * PC increments by 1
+ * Each label is assigned a value that refers to the index of the desired location in the instructions vector
+ */
+
+/* TODO:
+ * note: R0 is a read-only zero
+ * implement PC
+ * implement issueInstruction()
+ * implement executeInstruction()
+ * implement writeInstruction()
+ * investigate reorder buffer
+ */
+
 class instruction
 {
 public:
-    int instCode;
+    int instCode; // can be used to filter cases by type uniquely
     string instName;
     int rA;
     int rB;
@@ -23,7 +40,8 @@ public:
     char imm_offset_label;
     int index;
     int issuedCycle;
-    int executedCycle;
+    int executedCycleStart;
+    int executedCycleEnd;
     int writeCycle;
     void printInstruction();
 };
@@ -64,16 +82,10 @@ vector<reservationStation> call_ret_ReservationStations;
 vector<reservationStation> add_addi_ReservationStations;
 vector<reservationStation> nand_ReservationStations;
 vector<reservationStation> div_ReservationStations;
-short mem[65536]; // 16 bit * 65536 entry = 128 KB memory
+map<string, int> labelMap;
+queue<instruction> writebackQueue; // TODO: use when more than one instruction needs to be written back at the same cycle
 
-/* TODO:
- * note: R0 is a read-only zero
- * implement PC
- * implement issueInstruction()
- * implement executeInstruction()
- * implement writeInstruction()
- * investigate reorder buffer
- */
+short mem[65536]; // 16 bit * 65536 entry = 128 KB memory
 
 int main()
 {
@@ -112,13 +124,15 @@ void getInstructionsFromFile(string filename)
         exit(0);
     }
 
-    string s, temp;
+    string s, s2, temp;
     instruction i;
     int temp2;
+    bool wasLabel = false;
 
     while (!inputFile.eof())
     {
         inputFile >> s;
+        s2 = s;
         s = uppercase(s);
 
         if (s == "LOAD" || s == "STORE")
@@ -161,9 +175,10 @@ void getInstructionsFromFile(string filename)
             i.instCode = 4;
             i.instName = s;
             inputFile >> s;
-            temp2 = stoi(s);
-            temp2 = temp2 & 63;
-            i.imm_offset_label = (temp2 & 32) ? (temp2 | 193) : temp2; // set to signed 6 bits
+            // temp2 = stoi(s);
+            // temp2 = temp2 & 63;
+            // i.imm_offset_label = (temp2 & 32) ? (temp2 | 193) : temp2; // set to signed 6 bits
+            i.imm_offset_label = labelMap[s];
         }
         else if (s == "RET")
         {
@@ -186,13 +201,21 @@ void getInstructionsFromFile(string filename)
             s.erase(0, 1);
             i.rC = stoi(s);
         }
-        else
+        else // LABEL
         {
-            cout << "\n\nError: unknown instruction. Program terminated.";
-            exit(0);
+            // inputFile >> s;
+            s2.erase(s2.length() - 1, 1); // delete ':'
+            labelMap.insert(pair<string, int>(s2, instructions.size()));
+            wasLabel = true;
         }
-        i.index = instructions.size();
-        instructions.push_back(i);
+
+        if (!wasLabel)
+        {
+            i.index = instructions.size();
+            instructions.push_back(i);
+        }
+
+        wasLabel = false;
     }
 
     inputFile.close();
@@ -218,7 +241,13 @@ void instruction::printInstruction()
         break;
 
     case 4: // CALL
-        cout << instName << " " << (int)imm_offset_label;
+
+        cout << instName << " ";
+        for (auto &it : labelMap)
+            if (it.second == imm_offset_label)
+                cout << it.first;
+
+        cout << "  // PC=" << (int)imm_offset_label;
         break;
 
     case 5: // RET
